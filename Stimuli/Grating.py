@@ -52,36 +52,39 @@ class Grating(Stimulus, dj.Manual):
             os.makedirs(self.path)
         super().make_conditions(conditions)
         for cond in conditions:
-            if cond['temporal_freq'] != 0:
-                filename = self._get_filename(cond)
-                tuple = self.exp.logger.get(schema='stimulus', table='Grating.Movie',
-                                            key={**cond, 'file_name': filename}, fields=['stim_hash'])
-                if not tuple:
-                    print('Making movie %s', filename)
-                    cond['lamda'] = int(self.px_per_deg/cond['spatial_freq'])
-                    theta_frame_step = (cond['temporal_freq'] / self.monitor.fps) * np.pi * 2
-                    image = self._make_grating(**cond)
-                    images = image[:self.monitor.resolution_x, :self.monitor.resolution_y]
-                    if cond['flatness_correction']:
-                        images, transform = flat2curve(images, self.monitor.distance,
-                                                    self.monitor.size, method='index',
-                                                    center_x=self.monitor.center_x,
-                                                       center_y=self.monitor.center_y)
-                        images = self._gray2rgb(images)
-                    else:
-                        transform = lambda x: x
-                    for iframe in range(0, int(cond['duration']*self.monitor.fps/1000 + 10)):
-                        print('\r' + ('frame %d/%d' % (iframe, int(cond['duration']*self.monitor.fps/1000 + 10))), end='')
-                        cond['phase'] += theta_frame_step
-                        image = self._make_grating(**cond)
-                        images = np.dstack((images, self._gray2rgb(transform(image[:self.monitor.resolution_x,
-                                                                                   :self.monitor.resolution_y]))))
-                    print('\r' + 'done!')
-                    images = np.transpose(images[:, :, :], [2, 1, 0])
-                    self._im2mov(self.path + filename, images)
-                    self.logger.log('Grating.Movie', {**cond, 'file_name': filename,
-                                                      'clip': np.fromfile(self.path + filename, dtype=np.int8)},
-                                    schema='stimulus', priority=2, block=True, validate=True)
+            if cond['temporal_freq'] == 0:
+                continue
+            filename = self._get_filename(cond)
+            tuple = self.exp.logger.get(schema='stimulus', table='Grating.Movie',
+                                        key={**cond, 'file_name': filename}, fields=['stim_hash'])
+            if tuple:
+                continue
+
+            print('Making movie %s', filename)
+            cond['lamda'] = int(self.px_per_deg/cond['spatial_freq'])
+            theta_frame_step = (cond['temporal_freq'] / self.monitor.fps) * np.pi * 2
+            image = self._make_grating(**cond)
+            images = image[:self.monitor.resolution_x, :self.monitor.resolution_y]
+            transform = lambda x: x
+            if cond['flatness_correction']:
+                images, transform = flat2curve(images, self.monitor.distance,
+                                            self.monitor.size, method='index',
+                                            center_x=self.monitor.center_x,
+                                               center_y=self.monitor.center_y)
+                images = self._gray2rgb(images)
+
+            for iframe in range(0, int(cond['duration']*self.monitor.fps/1000 + 10)):
+                print('\r' + ('frame %d/%d' % (iframe, int(cond['duration']*self.monitor.fps/1000 + 10))), end='')
+                cond['phase'] += theta_frame_step
+                image = self._make_grating(**cond)
+                images = np.dstack((images, self._gray2rgb(transform(image[:self.monitor.resolution_x,
+                                                                           :self.monitor.resolution_y]))))
+            print('\r' + 'done!')
+            images = np.transpose(images[:, :, :], [2, 1, 0])
+            self._im2mov(self.path + filename, images)
+            self.logger.log('Grating.Movie', {**cond, 'file_name': filename,
+                                              'clip': np.fromfile(self.path + filename, dtype=np.int8)},
+                            schema='stimulus', priority=2, block=True, validate=True)
         return conditions
 
     def prepare(self, curr_cond):
